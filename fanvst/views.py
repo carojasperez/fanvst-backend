@@ -18,6 +18,19 @@ from .serializers import (
 from .pagination import ArtistPagination
 
 
+def _get_artist(handle_or_uuid, qs=None):
+    """Resuelve un artista por UUID o handle."""
+    if qs is None:
+        qs = ArtistProfile.objects.select_related('user').prefetch_related(
+            'genres', 'followers', 'fan_tiers', 'campaigns'
+        )
+    try:
+        uuid_module.UUID(str(handle_or_uuid))
+        return get_object_or_404(qs, uuid=handle_or_uuid)
+    except ValueError:
+        return get_object_or_404(qs, handle=handle_or_uuid)
+
+
 def _get_campaign(slug_or_uuid, qs=None):
     """Resuelve una campaña por UUID o slug."""
     if qs is None:
@@ -54,20 +67,19 @@ class ArtistListView(generics.ListAPIView):
         return qs
 
 
-class ArtistDetailView(generics.RetrieveAPIView):
-    serializer_class = ArtistDetailSerializer
+class ArtistDetailView(APIView):
     permission_classes = [AllowAny]
-    lookup_field = 'uuid'
-    queryset = ArtistProfile.objects.select_related('user').prefetch_related(
-        'genres', 'followers', 'fan_tiers', 'campaigns'
-    )
+
+    def get(self, request, handle_or_uuid):
+        artist = _get_artist(handle_or_uuid)
+        return Response(ArtistDetailSerializer(artist, context={'request': request}).data)
 
 
 class ArtistFollowView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, uuid):
-        artist = get_object_or_404(ArtistProfile, uuid=uuid)
+    def post(self, request, handle_or_uuid):
+        artist = _get_artist(handle_or_uuid, qs=ArtistProfile.objects.prefetch_related('followers'))
         follow, created = ArtistFollow.objects.get_or_create(
             fan=request.user, artist=artist
         )

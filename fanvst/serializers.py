@@ -53,7 +53,7 @@ class ArtistMiniSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ArtistProfile
-        fields = ('uuid', 'stage_name', 'picture_url', 'verified')
+        fields = ('uuid', 'handle', 'stage_name', 'picture_url', 'verified')
 
     def get_picture_url(self, obj):
         return obj.picture_url
@@ -119,7 +119,7 @@ class ArtistListSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArtistProfile
         fields = (
-            'uuid', 'first_name', 'last_name', 'stage_name', 'bio',
+            'uuid', 'handle', 'first_name', 'last_name', 'stage_name', 'bio',
             'picture_url', 'cover_picture_url', 'artist_type',
             'artist_type_text', 'location_display', 'verified',
             'genres', 'followers_count', 'active_campaigns_count', 'is_following',
@@ -196,5 +196,5 @@ class ArtistProfileUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ArtistProfile
-        fields = ('stage_name', 'bio', 'location_display', 'artist_type', 'genres',
+        fields = ('handle', 'stage_name', 'bio', 'location_display', 'artist_type', 'genres',
                   'instagram', 'spotify', 'youtube', 'tiktok', 'soundcloud', 'website')

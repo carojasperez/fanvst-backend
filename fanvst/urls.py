@@ -19,8 +19,8 @@ urlpatterns = [
 
     # Artists
     path('artists/', ArtistListView.as_view()),
-    path('artist/<uuid:uuid>/', ArtistDetailView.as_view()),
-    path('artist/<uuid:uuid>/follow/', ArtistFollowView.as_view()),
+    path('artist/<str:handle_or_uuid>/', ArtistDetailView.as_view()),
+    path('artist/<str:handle_or_uuid>/follow/', ArtistFollowView.as_view()),
 
     # Campaigns — <str:slug_or_uuid> acepta tanto UUID como slug
     path('campaigns/', CampaignListView.as_view()),

@@ -324,5 +324,7 @@ def create_user_notification(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender=User)
-def save_user_notification(sender, instance, **kwargs):
-    instance.notification.save()
+def save_user_notification(sender, instance, created, **kwargs):
+    if not created:
+        Notification.objects.get_or_create(user=instance)
+        instance.notification.save()

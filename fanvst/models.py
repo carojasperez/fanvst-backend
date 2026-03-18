@@ -52,6 +52,8 @@ class ArtistProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     stage_name = models.CharField(max_length=200)
+    handle = models.SlugField(max_length=60, unique=True, null=True, blank=True,
+                              help_text='Identificador único tipo @handle (ej: monlaferte)')
     bio = models.TextField(blank=True)
     picture = models.ImageField(upload_to=artist_picture_path, blank=True, null=True)
     cover_picture = models.ImageField(upload_to=artist_cover_path, blank=True, null=True)
