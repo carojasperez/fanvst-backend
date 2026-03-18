@@ -1,0 +1,15 @@
+{
+    "files.associations": {
+
+    
+    },
+    "python.linting.pylintArgs": [
+        "--load-plugins=pylint_Django"
+],
+    "python.pythonPath": "/Users/carlosrojas/Documents/Dev/work/env/bin/python",
+
+"editor.rulers": [80],
+"launch": {
+
+},
+}
