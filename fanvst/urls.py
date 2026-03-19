@@ -1,8 +1,8 @@
 from django.urls import path
 from .views import (
     GenreListView,
-    ArtistListView, ArtistDetailView, ArtistFollowView, ArtistTipView,
-    CampaignListView, CampaignDetailView, CampaignContributeView,
+    ArtistListView, ArtistDetailView, ArtistFollowView, ArtistTipView, TipPaypalConfirmView,
+    CampaignListView, CampaignDetailView, CampaignContributeView, CampaignContributePaypalView,
     ArtistCampaignView, ArtistCampaignDetailView,
     TierSubscribeView,
     MeFollowingView, MeSubscriptionsView, MeContributionsView, MeTipsView,
@@ -21,12 +21,14 @@ urlpatterns = [
     path('artists/', ArtistListView.as_view()),
     path('artist/<str:handle_or_uuid>/', ArtistDetailView.as_view()),
     path('artist/<str:handle_or_uuid>/follow/', ArtistFollowView.as_view()),
-    path('artist/<str:handle_or_uuid>/tip/',   ArtistTipView.as_view()),
+    path('artist/<str:handle_or_uuid>/tip/',         ArtistTipView.as_view()),
+    path('artist/<str:handle_or_uuid>/tip/confirm/', TipPaypalConfirmView.as_view()),
 
     # Campaigns — <str:slug_or_uuid> acepta tanto UUID como slug
     path('campaigns/', CampaignListView.as_view()),
     path('campaign/<str:slug_or_uuid>/', CampaignDetailView.as_view()),
-    path('campaign/<str:slug_or_uuid>/contribute/', CampaignContributeView.as_view()),
+    path('campaign/<str:slug_or_uuid>/contribute/',         CampaignContributeView.as_view()),
+    path('campaign/<str:slug_or_uuid>/contribute/confirm/', CampaignContributePaypalView.as_view()),
 
     # Subscriptions
     path('tier/<int:tier_id>/subscribe/', TierSubscribeView.as_view()),

@@ -255,6 +255,8 @@ class DirectTip(models.Model):
     currency = models.CharField(max_length=3, default='USD')
     message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    confirmed = models.BooleanField(default=False)
+    paypal_order_id = models.CharField(max_length=100, blank=True)
 
     class Meta:
         ordering = ['-created_at']

@@ -1,10 +1,13 @@
 import uuid as uuid_module
+import requests
 from rest_framework import generics, filters, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser
+from django.conf import settings
 from django.shortcuts import get_object_or_404
+from adminsite.functions import get_paypal_token
 
 from .models import Genre, ArtistProfile, ArtistFollow, FanTier, FanSubscription, Campaign, CampaignContribution, CampaignReward, CampaignUpdate, DirectTip
 from .serializers import (
@@ -128,6 +131,62 @@ class ArtistTipView(APIView):
         return Response(DirectTipSerializer(tips, many=True).data)
 
 
+class TipPaypalConfirmView(APIView):
+    """Confirma una propina directa después de que PayPal aprobó el pago."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, handle_or_uuid):
+        artist = _get_artist(handle_or_uuid)
+        if hasattr(artist, 'user') and artist.user == request.user:
+            return Response({'detail': 'No puedes darte propina a ti mismo.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        order = request.data.get('order')
+        currency = request.data.get('currency', 'USD')
+        message = request.data.get('message', '')
+
+        if not order or not order.get('id'):
+            return Response({'detail': 'Datos de pago inválidos.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Credenciales PayPal según entorno
+        if settings.DEBUG:
+            paypal_client = 'AaROIHeyXcUoL6ydmcsjgmn74Uk3ucAnL7ECgcMsxZxsOb_Odlwi2wMM236sR9LbBR_93LJVUv1rM2Z7'
+            paypal_secret = 'ELG5tBk5Qc9MLGg9uhngxDt8Ge4dBIs_t1v2LUX9lpBRp9yY87J5ahM5TR7kANsvYuSw1iOS7HGqE8cq'
+            paypal_url    = 'https://api-m.sandbox.paypal.com/'
+        else:
+            paypal_client = 'AdawtbH8ItpjtS0NU248DODrfRgiTUcr04sSJDulgj-4L5uYakDnvRt5QXHigxjTWcCUFDxbH-Z-RlKs'
+            paypal_secret = 'EMKHndw8FwjiOOWBUAzR8KDinUflJ6KKyt8qtEUkHCO6HaIylzYgJdP4ua9Pisa9Y9bRp7TnaQkkS7oV'
+            paypal_url    = 'https://api-m.paypal.com/'
+
+        # Verificar orden con PayPal
+        token = get_paypal_token(paypal_url, paypal_client, paypal_secret)
+        r = requests.get(
+            paypal_url + 'v2/checkout/orders/' + order['id'],
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            timeout=15,
+        )
+        paypal_data = r.json()
+
+        if paypal_data.get('status') != 'COMPLETED':
+            return Response({'detail': 'El pago no fue completado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Extraer el monto real capturado por PayPal
+        try:
+            amount = paypal_data['purchase_units'][0]['payments']['captures'][0]['amount']['value']
+        except (KeyError, IndexError):
+            amount = paypal_data['purchase_units'][0]['amount']['value']
+
+        tip = DirectTip.objects.create(
+            fan=request.user,
+            artist=artist,
+            amount=amount,
+            currency=currency,
+            message=message,
+            confirmed=True,
+            paypal_order_id=order['id'],
+        )
+        return Response({'id': tip.id, 'amount': str(tip.amount), 'currency': tip.currency}, status=status.HTTP_201_CREATED)
+
+
 class MeTipsView(APIView):
     """Tips enviados por el fan autenticado (para sección Mis apoyos)."""
     permission_classes = [IsAuthenticated]
@@ -195,6 +254,63 @@ class CampaignContributeView(APIView):
             campaign=campaign,
             amount=ser.validated_data['amount'],
             message=ser.validated_data.get('message', ''),
+            confirmed=True,
+        )
+        return Response({
+            'id': contribution.id,
+            'amount': str(contribution.amount),
+            'raised_amount': str(campaign.raised_amount),
+            'percent_reached': campaign.percent_reached,
+            'contributors_count': campaign.contributors_count,
+        }, status=status.HTTP_201_CREATED)
+
+
+class CampaignContributePaypalView(APIView):
+    """Fan confirma su contribución a una campaña tras el pago con PayPal."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, slug_or_uuid):
+        campaign = _get_campaign(slug_or_uuid)
+        if campaign.status != 'active':
+            return Response({'detail': 'La campaña no está activa.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        order    = request.data.get('order')
+        message  = request.data.get('message', '')
+
+        if not order or not order.get('id'):
+            return Response({'detail': 'Datos de pago inválidos.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Credenciales PayPal según entorno
+        if settings.DEBUG:
+            paypal_client = 'AaROIHeyXcUoL6ydmcsjgmn74Uk3ucAnL7ECgcMsxZxsOb_Odlwi2wMM236sR9LbBR_93LJVUv1rM2Z7'
+            paypal_secret = 'ELG5tBk5Qc9MLGg9uhngxDt8Ge4dBIs_t1v2LUX9lpBRp9yY87J5ahM5TR7kANsvYuSw1iOS7HGqE8cq'
+            paypal_url    = 'https://api-m.sandbox.paypal.com/'
+        else:
+            paypal_client = 'AdawtbH8ItpjtS0NU248DODrfRgiTUcr04sSJDulgj-4L5uYakDnvRt5QXHigxjTWcCUFDxbH-Z-RlKs'
+            paypal_secret = 'EMKHndw8FwjiOOWBUAzR8KDinUflJ6KKyt8qtEUkHCO6HaIylzYgJdP4ua9Pisa9Y9bRp7TnaQkkS7oV'
+            paypal_url    = 'https://api-m.paypal.com/'
+
+        token = get_paypal_token(paypal_url, paypal_client, paypal_secret)
+        r = requests.get(
+            paypal_url + 'v2/checkout/orders/' + order['id'],
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            timeout=15,
+        )
+        paypal_data = r.json()
+
+        if paypal_data.get('status') != 'COMPLETED':
+            return Response({'detail': 'El pago no fue completado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount = paypal_data['purchase_units'][0]['payments']['captures'][0]['amount']['value']
+        except (KeyError, IndexError):
+            amount = paypal_data['purchase_units'][0]['amount']['value']
+
+        contribution = CampaignContribution.objects.create(
+            fan=request.user,
+            campaign=campaign,
+            amount=amount,
+            message=message,
             confirmed=True,
         )
         return Response({
