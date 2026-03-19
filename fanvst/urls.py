@@ -1,11 +1,11 @@
 from django.urls import path
 from .views import (
     GenreListView,
-    ArtistListView, ArtistDetailView, ArtistFollowView,
+    ArtistListView, ArtistDetailView, ArtistFollowView, ArtistTipView,
     CampaignListView, CampaignDetailView, CampaignContributeView,
-    ArtistCampaignView,
+    ArtistCampaignView, ArtistCampaignDetailView,
     TierSubscribeView,
-    MeFollowingView, MeSubscriptionsView, MeContributionsView,
+    MeFollowingView, MeSubscriptionsView, MeContributionsView, MeTipsView,
     MyArtistProfileView, ArtistPictureView, ArtistCoverView,
     CampaignCoverView, CampaignRewardView, CampaignRewardDetailView, CampaignPublishView,
     CampaignUpdateView,
@@ -21,6 +21,7 @@ urlpatterns = [
     path('artists/', ArtistListView.as_view()),
     path('artist/<str:handle_or_uuid>/', ArtistDetailView.as_view()),
     path('artist/<str:handle_or_uuid>/follow/', ArtistFollowView.as_view()),
+    path('artist/<str:handle_or_uuid>/tip/',   ArtistTipView.as_view()),
 
     # Campaigns — <str:slug_or_uuid> acepta tanto UUID como slug
     path('campaigns/', CampaignListView.as_view()),
@@ -34,10 +35,12 @@ urlpatterns = [
     path('me/following/', MeFollowingView.as_view()),
     path('me/subscriptions/', MeSubscriptionsView.as_view()),
     path('me/contributions/', MeContributionsView.as_view()),
+    path('me/tips/', MeTipsView.as_view()),
     path('me/artist-profile/', MyArtistProfileView.as_view()),
     path('me/artist-profile/picture/', ArtistPictureView.as_view()),
     path('me/artist-profile/cover/', ArtistCoverView.as_view()),
     path('me/campaigns/', ArtistCampaignView.as_view()),
+    path('me/campaigns/<uuid:uuid>/', ArtistCampaignDetailView.as_view()),
     path('me/campaigns/<uuid:uuid>/cover/', CampaignCoverView.as_view()),
     path('me/campaigns/<uuid:uuid>/rewards/', CampaignRewardView.as_view()),
     path('me/campaigns/<uuid:uuid>/rewards/<int:reward_id>/', CampaignRewardDetailView.as_view()),

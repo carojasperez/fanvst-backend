@@ -6,14 +6,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser
 from django.shortcuts import get_object_or_404
 
-from .models import Genre, ArtistProfile, ArtistFollow, FanTier, FanSubscription, Campaign, CampaignContribution, CampaignReward, CampaignUpdate
+from .models import Genre, ArtistProfile, ArtistFollow, FanTier, FanSubscription, Campaign, CampaignContribution, CampaignReward, CampaignUpdate, DirectTip
 from .serializers import (
     GenreSerializer, ArtistListSerializer, ArtistDetailSerializer,
     ArtistProfileUpdateSerializer,
-    CampaignSerializer, CampaignCreateSerializer, ContributeSerializer,
+    CampaignSerializer, CampaignCreateSerializer, CampaignEditSerializer,
+    ContributeSerializer,
     SubscriptionSerializer, ContributionSerializer, CampaignRewardSerializer,
     CampaignUpdateSerializer, FanTierSerializer, FanTierCreateSerializer,
-    SubscriberSerializer,
+    SubscriberSerializer, TipSerializer, DirectTipSerializer,
 )
 from .pagination import ArtistPagination
 
@@ -94,6 +95,61 @@ class ArtistFollowView(APIView):
         })
 
 
+class ArtistTipView(APIView):
+    """Fan envía una propina directa al artista (sin campaña)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, handle_or_uuid):
+        artist = _get_artist(handle_or_uuid)
+        # No puede darse propina a sí mismo
+        if hasattr(artist, 'user') and artist.user == request.user:
+            return Response({'detail': 'No puedes darte propina a ti mismo.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        ser = TipSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        tip = DirectTip.objects.create(
+            fan=request.user,
+            artist=artist,
+            amount=ser.validated_data['amount'],
+            currency=ser.validated_data.get('currency', 'USD'),
+            message=ser.validated_data.get('message', ''),
+        )
+        return Response({
+            'id': tip.id,
+            'amount': str(tip.amount),
+            'currency': tip.currency,
+        }, status=status.HTTP_201_CREATED)
+
+    def get(self, request, handle_or_uuid):
+        """Lista de tips recibidos por el artista (para su dashboard)."""
+        artist = get_object_or_404(ArtistProfile, user=request.user)
+        tips = artist.tips_received.select_related('fan').all()
+        return Response(DirectTipSerializer(tips, many=True).data)
+
+
+class MeTipsView(APIView):
+    """Tips enviados por el fan autenticado (para sección Mis apoyos)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        tips = DirectTip.objects.filter(fan=request.user).select_related('artist').order_by('-created_at')
+        data = [{
+            'id': t.id,
+            'artist': {
+                'uuid': str(t.artist.uuid),
+                'handle': t.artist.handle,
+                'stage_name': t.artist.stage_name,
+                'picture_url': t.artist.picture_url,
+            },
+            'amount': str(t.amount),
+            'currency': t.currency,
+            'message': t.message,
+            'created_at': t.created_at,
+        } for t in tips]
+        return Response(data)
+
+
 # ── Campaigns ─────────────────────────────────────────────────────────────────
 
 class CampaignListView(generics.ListAPIView):
@@ -171,6 +227,30 @@ class ArtistCampaignView(APIView):
             CampaignSerializer(campaign, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class ArtistCampaignDetailView(APIView):
+    """PATCH — edita los campos básicos de una campaña del artista autenticado.
+    goal_amount solo se permite modificar cuando status == 'draft'.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_campaign(self, user, campaign_uuid):
+        artist = get_object_or_404(ArtistProfile, user=user)
+        return get_object_or_404(Campaign, uuid=campaign_uuid, artist=artist)
+
+    def patch(self, request, uuid):
+        campaign = self._get_campaign(request.user, uuid)
+
+        # Construir dict mutable y filtrar goal_amount si ya está publicada
+        data = {k: v for k, v in request.data.items()}
+        if campaign.status != 'draft':
+            data.pop('goal_amount', None)
+
+        ser = CampaignEditSerializer(campaign, data=data, partial=True)
+        ser.is_valid(raise_exception=True)
+        updated = ser.save()
+        return Response(CampaignSerializer(updated, context={'request': request}).data)
 
 
 # ── Subscriptions ─────────────────────────────────────────────────────────────

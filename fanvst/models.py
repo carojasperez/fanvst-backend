@@ -247,6 +247,22 @@ class CampaignUpdate(models.Model):
         return f'{self.campaign} — {self.title}'
 
 
+class DirectTip(models.Model):
+    """Propina directa de un fan a un artista, sin estar asociada a campaña."""
+    fan    = models.ForeignKey(User, on_delete=models.CASCADE, related_name='fanvst_tips_sent')
+    artist = models.ForeignKey(ArtistProfile, on_delete=models.CASCADE, related_name='tips_received')
+    amount = models.DecimalField(max_digits=8, decimal_places=2)
+    currency = models.CharField(max_length=3, default='USD')
+    message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.fan} → {self.artist} (${self.amount})'
+
+
 class FanProfile(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='fan_profile')

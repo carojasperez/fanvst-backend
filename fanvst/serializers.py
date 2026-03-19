@@ -1,6 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
-from .models import Genre, ArtistProfile, FanTier, FanSubscription, Campaign, CampaignContribution, CampaignReward, CampaignUpdate
+from .models import Genre, ArtistProfile, FanTier, FanSubscription, Campaign, CampaignContribution, CampaignReward, CampaignUpdate, DirectTip
 
 
 class GenreSerializer(serializers.ModelSerializer):
@@ -187,6 +187,35 @@ class ContributionSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignContribution
         fields = ('id', 'campaign', 'amount', 'confirmed', 'message', 'created_at')
+
+
+class TipSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(
+        max_digits=8, decimal_places=2,
+        min_value=Decimal('1'),
+    )
+    currency = serializers.CharField(max_length=3, default='USD')
+    message  = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')
+
+
+class DirectTipSerializer(serializers.ModelSerializer):
+    fan_username = serializers.CharField(source='fan.username', read_only=True)
+
+    class Meta:
+        model  = DirectTip
+        fields = ('id', 'fan_username', 'amount', 'currency', 'message', 'created_at')
+
+
+class CampaignEditSerializer(serializers.ModelSerializer):
+    """Permite al artista editar su campaña. goal_amount solo se acepta en status=draft."""
+    class Meta:
+        model = Campaign
+        fields = ('title', 'description', 'goal_amount', 'deadline')
+
+    def validate_goal_amount(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError('La meta debe ser mayor a 0.')
+        return value
 
 
 class ArtistProfileUpdateSerializer(serializers.ModelSerializer):
