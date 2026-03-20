@@ -59,12 +59,37 @@ INSTALLED_APPS = [
     'blog',
     'svc',
     'fanvst',
+    'wallet',
+    'notifications',
 ]
 
 
 # ── Celery ────────────────────────────────────────────────────────────────────
+from celery.schedules import crontab  # noqa: E402
+
 CELERY_TIMEZONE   = config('CELERY_TIMEZONE',   default='America/Lima')
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost')
+
+CELERY_BEAT_SCHEDULE = {
+    # Libera fondos en clearing que ya superaron su available_at
+    'wallet-clear-pending': {
+        'task': 'wallet.clear_pending_transactions',
+        'schedule': crontab(minute=0),  # Cada hora
+    },
+    # Resumen diario de usuarios registrados → Telegram grupo Fan Registration
+    'notify-daily-fan-summary': {
+        'task': 'notifications.notify_daily_fan_summary',
+        'schedule': crontab(hour=20, minute=0),  # 20:00 hora Lima
+    },
+}
+
+
+# ── Telegram (Staff Notifications) ───────────────────────────────────────────
+# Configurar en .env una vez que tengas el bot creado con @BotFather
+TELEGRAM_BOT_TOKEN          = config('TELEGRAM_BOT_TOKEN',          default='')
+TELEGRAM_CHAT_ARTIST_REG    = config('TELEGRAM_CHAT_ARTIST_REG',    default='')
+TELEGRAM_CHAT_FAN_REG       = config('TELEGRAM_CHAT_FAN_REG',       default='')
+TELEGRAM_CHAT_PAYMENTS      = config('TELEGRAM_CHAT_PAYMENTS',      default='')
 
 
 # ── CORS ──────────────────────────────────────────────────────────────────────

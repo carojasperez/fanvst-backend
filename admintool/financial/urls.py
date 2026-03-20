@@ -24,10 +24,14 @@ router.register('data/API/sales-monthly', views.SalesPerMonth, 'SalesPerMonth')
 
 
 urlpatterns = [
+    # Register Payment (Qué Chamba legacy)
+    path('data/API/register-payment/', views.RegisterPayment.as_view()),
 
-# Register Payment
-path('data/API/register-payment/', views.RegisterPayment.as_view())
-
+    # Artist Payouts
+    path('data/API/artist-payouts/', views.ArtistPayoutList.as_view()),
+    path('data/API/artist-payout-approve/', views.ArtistPayoutApprove.as_view()),
+    path('data/API/artist-payout-complete/', views.ArtistPayoutComplete.as_view()),
+    path('data/API/artist-payout-cancel/', views.ArtistPayoutCancel.as_view()),
 ]
 
 urlpatterns += router.urls

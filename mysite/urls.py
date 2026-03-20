@@ -33,6 +33,9 @@ urlpatterns = [
     path('legal/', include('legal.urls', namespace='legal')),
     path('blog/', include('blog.urls', namespace='blog')),
 
+    # Wallet & Payouts (artista autenticado)
+    path('wallet/', include('wallet.urls', namespace='wallet')),
+
     # URLS Administrativas - Solo Staff LetsCloud
     path('financial/', include('admintool.financial.urls', namespace='financial')),
 
