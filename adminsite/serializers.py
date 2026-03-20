@@ -77,7 +77,7 @@ class UserRegSer(serializers.ModelSerializer):
                 stage_name=firstName,
             )
         else:
-            FanProfile.objects.create(user=user)
+            FanProfile.objects.create(user=user, public_alias=f"Fan {user.id}"[:50])
 
         email_val = EmailValidation.objects.create(user=user)
 

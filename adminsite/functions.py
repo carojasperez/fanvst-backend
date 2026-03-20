@@ -126,6 +126,4 @@ def get_paypal_token(url, client, secret):
     r = requests.post(url, auth=(client, secret), headers=headers, data=d)
 
     json = r.json()
-    print("Respuesta De token paypal")
-    print(json['access_token'])
     return json['access_token']

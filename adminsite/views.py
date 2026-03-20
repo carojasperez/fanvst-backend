@@ -222,10 +222,8 @@ class UpdatePassword(views.APIView):
             # set_password also hashes the password that the user will get
             self.object.set_password(serializer.data.get("new_password"))
             self.object.save()
-            token, created =  Token.objects.get_or_create(user=self.request.user)
-            token.delete()
-            token.created = datetime.utcnow()
-            token.save()
+            Token.objects.filter(user=self.request.user).delete()
+            Token.objects.create(user=self.request.user)
             email_notification_msg_norul.delay(
                     self.request.user.username, self.request.user.first_name,
                     "Tu contraseña ha sido actualizada",
@@ -409,10 +407,8 @@ class ChangePasswordFromEmail(views.APIView):
                 userID.set_password(password)
                 userID.save()
                 # Se regenera el Token de sesión
-                token, created =  Token.objects.get_or_create(user=tokenValid.user)
-                token.delete()
-                token.created = datetime.utcnow()
-                token.save()
+                Token.objects.filter(user=tokenValid.user).delete()
+                Token.objects.create(user=tokenValid.user)
                 # Se notifica el cambio de contraseña al correo.
                 email_notification_msg_norul.delay(
                     tokenValid.user.username, tokenValid.user.first_name,
@@ -434,17 +430,20 @@ class ResendValidationEmail(views.APIView):
     def post(self, request, *args, **kwargs):
         eaddress = request.data.get('eaddress', None)
 
-        email_val = EmailValidation.objects.get(
-            user__username=eaddress,
-            used=False
+        email_val = (
+            EmailValidation.objects
+            .filter(user__username=eaddress, used=False)
+            .order_by('-id')
+            .first()
         )
 
-        email_validation.delay(
-                str(email_val.uuid1) + '/' + str(email_val.uuid2),
-                # username, firstName
-                email_val.user.username,
-                email_val.user.first_name
-                )
+        if email_val:
+            email_validation.delay(
+                    str(email_val.uuid1) + '/' + str(email_val.uuid2),
+                    # username, firstName
+                    email_val.user.username,
+                    email_val.user.first_name
+                    )
 
         return Response({"corrrecto": ["Correo enviado"]}, 
             status=status.HTTP_200_OK)

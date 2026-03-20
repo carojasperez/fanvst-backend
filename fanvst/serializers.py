@@ -1,6 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
-from .models import Genre, ArtistProfile, FanTier, FanSubscription, Campaign, CampaignContribution, CampaignReward, CampaignUpdate, DirectTip
+from .models import Genre, ArtistProfile, FanProfile, FanTier, FanSubscription, Campaign, CampaignContribution, CampaignReward, CampaignUpdate, DirectTip
 
 
 class GenreSerializer(serializers.ModelSerializer):
@@ -34,6 +34,29 @@ class FanTierCreateSerializer(serializers.ModelSerializer):
         if value <= 0:
             raise serializers.ValidationError('El precio debe ser mayor a 0.')
         return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        tier = getattr(self, 'instance', None)
+        if not tier:
+            return attrs
+
+        has_active_subscribers = tier.subscriptions.filter(is_active=True).exists()
+        if not has_active_subscribers:
+            return attrs
+
+        price_changed = 'price' in self.initial_data and attrs.get('price', tier.price) != tier.price
+        currency_changed = 'currency' in self.initial_data and attrs.get('currency', tier.currency) != tier.currency
+
+        if price_changed or currency_changed:
+            raise serializers.ValidationError({
+                'detail': (
+                    'No puedes cambiar precio o moneda de un plan con suscriptores activos. '
+                    'Crea un nuevo plan para nuevos precios.'
+                )
+            })
+
+        return attrs
 
 
 class CampaignRewardSerializer(serializers.ModelSerializer):
@@ -161,8 +184,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
 
 class SubscriberSerializer(serializers.ModelSerializer):
     """Suscriptor visto desde la perspectiva del artista."""
-    fan_name     = serializers.SerializerMethodField()
-    fan_username = serializers.SerializerMethodField()
+    fan_alias    = serializers.SerializerMethodField()
     tier_id      = serializers.IntegerField(source='tier.id', read_only=True)
     tier_name    = serializers.CharField(source='tier.name', read_only=True)
     tier_price   = serializers.DecimalField(source='tier.price', max_digits=8, decimal_places=2, read_only=True)
@@ -170,15 +192,11 @@ class SubscriberSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FanSubscription
-        fields = ('id', 'fan_name', 'fan_username', 'tier_id', 'tier_name',
+        fields = ('id', 'fan_alias', 'tier_id', 'tier_name',
                   'tier_price', 'tier_currency', 'created_at')
 
-    def get_fan_name(self, obj):
-        name = f"{obj.fan.first_name} {obj.fan.last_name}".strip()
-        return name or obj.fan.username
-
-    def get_fan_username(self, obj):
-        return obj.fan.username
+    def get_fan_alias(self, obj):
+        return _fan_public_label(obj.fan)
 
 
 class ContributionSerializer(serializers.ModelSerializer):
@@ -198,12 +216,50 @@ class TipSerializer(serializers.Serializer):
     message  = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')
 
 
+class FanProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FanProfile
+        fields = ('uuid', 'public_alias', 'show_real_name_to_artists')
+        read_only_fields = ('uuid',)
+
+    def validate_public_alias(self, value):
+        alias = value.strip()
+        if alias:
+            return alias
+
+        request = self.context.get('request')
+        if not request:
+            return alias
+
+        return f'Fan {request.user.id}'
+
+
+def _fan_public_label(user):
+    profile = getattr(user, 'fan_profile', None)
+    if profile and profile.show_real_name_to_artists:
+        first_name = (user.first_name or '').strip()
+        last_name = (user.last_name or '').strip()
+        full_name = f'{first_name} {last_name}'.strip()
+        if full_name:
+            return full_name
+        if first_name:
+            return first_name
+
+    alias = (profile.public_alias if profile else '').strip() if profile else ''
+    if alias:
+        return alias
+    return f'Fan {user.id}'
+
+
 class DirectTipSerializer(serializers.ModelSerializer):
-    fan_username = serializers.CharField(source='fan.username', read_only=True)
+    fan_alias = serializers.SerializerMethodField()
 
     class Meta:
         model  = DirectTip
-        fields = ('id', 'fan_username', 'amount', 'currency', 'message', 'created_at')
+        fields = ('id', 'fan_alias', 'amount', 'currency', 'message', 'created_at')
+
+    def get_fan_alias(self, obj):
+        return _fan_public_label(obj.fan)
 
 
 class CampaignEditSerializer(serializers.ModelSerializer):

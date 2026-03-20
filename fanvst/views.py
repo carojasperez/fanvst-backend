@@ -9,7 +9,7 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from adminsite.functions import get_paypal_token
 
-from .models import Genre, ArtistProfile, ArtistFollow, FanTier, FanSubscription, Campaign, CampaignContribution, CampaignReward, CampaignUpdate, DirectTip
+from .models import Genre, ArtistProfile, FanProfile, ArtistFollow, FanTier, FanSubscription, Campaign, CampaignContribution, CampaignReward, CampaignUpdate, DirectTip
 from .serializers import (
     GenreSerializer, ArtistListSerializer, ArtistDetailSerializer,
     ArtistProfileUpdateSerializer,
@@ -17,7 +17,7 @@ from .serializers import (
     ContributeSerializer,
     SubscriptionSerializer, ContributionSerializer, CampaignRewardSerializer,
     CampaignUpdateSerializer, FanTierSerializer, FanTierCreateSerializer,
-    SubscriberSerializer, TipSerializer, DirectTipSerializer,
+    SubscriberSerializer, TipSerializer, DirectTipSerializer, FanProfileSerializer,
 )
 from .pagination import ArtistPagination
 
@@ -127,7 +127,7 @@ class ArtistTipView(APIView):
     def get(self, request, handle_or_uuid):
         """Lista de tips recibidos por el artista (para su dashboard)."""
         artist = get_object_or_404(ArtistProfile, user=request.user)
-        tips = artist.tips_received.select_related('fan').all()
+        tips = artist.tips_received.select_related('fan', 'fan__fan_profile').all()
         return Response(DirectTipSerializer(tips, many=True).data)
 
 
@@ -207,6 +207,22 @@ class MeTipsView(APIView):
             'created_at': t.created_at,
         } for t in tips]
         return Response(data)
+
+
+class MeFanProfileView(APIView):
+    """Perfil público del fan para visibilidad en artistas (alias)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        profile = get_object_or_404(FanProfile, user=request.user)
+        return Response(FanProfileSerializer(profile, context={'request': request}).data)
+
+    def patch(self, request):
+        profile = get_object_or_404(FanProfile, user=request.user)
+        ser = FanProfileSerializer(profile, data=request.data, partial=True, context={'request': request})
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(FanProfileSerializer(profile, context={'request': request}).data)
 
 
 # ── Campaigns ─────────────────────────────────────────────────────────────────
@@ -614,7 +630,7 @@ class ArtistSubscribersView(APIView):
         artist = get_object_or_404(ArtistProfile, user=request.user)
         subs = (FanSubscription.objects
                 .filter(tier__artist=artist, is_active=True)
-                .select_related('fan', 'tier')
+                .select_related('fan', 'fan__fan_profile', 'tier')
                 .order_by('-created_at'))
         # Filtro opcional por tier
         tier_id = request.query_params.get('tier_id')

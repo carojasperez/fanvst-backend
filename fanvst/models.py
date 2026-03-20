@@ -268,8 +268,10 @@ class DirectTip(models.Model):
 class FanProfile(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='fan_profile')
+    public_alias = models.CharField(max_length=50, blank=True)
+    show_real_name_to_artists = models.BooleanField(default=False)
     favorite_genres = models.ManyToManyField(Genre, blank=True, related_name='fans')
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f'Fan: {self.user.username}'
+        return f'Fan: {self.public_alias or self.user.username}'

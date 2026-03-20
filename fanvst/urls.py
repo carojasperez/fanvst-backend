@@ -6,6 +6,7 @@ from .views import (
     ArtistCampaignView, ArtistCampaignDetailView,
     TierSubscribeView,
     MeFollowingView, MeSubscriptionsView, MeContributionsView, MeTipsView,
+    MeFanProfileView,
     MyArtistProfileView, ArtistPictureView, ArtistCoverView,
     CampaignCoverView, CampaignRewardView, CampaignRewardDetailView, CampaignPublishView,
     CampaignUpdateView,
@@ -35,6 +36,7 @@ urlpatterns = [
 
     # Me (authenticated)
     path('me/following/', MeFollowingView.as_view()),
+    path('me/fan-profile/', MeFanProfileView.as_view()),
     path('me/subscriptions/', MeSubscriptionsView.as_view()),
     path('me/contributions/', MeContributionsView.as_view()),
     path('me/tips/', MeTipsView.as_view()),
