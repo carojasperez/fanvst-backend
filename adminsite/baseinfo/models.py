@@ -35,7 +35,6 @@ class Department(models.Model):
 
     def __str__(self):
         return self.name
-        # return '%d: %s' % (self.id, self.name)
 
     class Meta:
         ordering = ['name']
@@ -122,7 +121,7 @@ class SubCategory(models.Model):
 
 class Membership(models.Model):
     '''
-    Lleva el control de las membresías disponibles en Qué Chamba
+    Lleva el control de las membresías disponibles en Fanvst
     '''
     created_by = models.ForeignKey(User, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -138,7 +137,7 @@ class Membership(models.Model):
 
 class MembershipPromoCode(models.Model):
     '''
-    Modelo que guarda las promociones de Que Chamba
+    Modelo que guarda las promociones de Fanvst
     '''
     created_by = models.ForeignKey(User, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -148,6 +147,5 @@ class MembershipPromoCode(models.Model):
     name = models.CharField(max_length=200)
     code = models.CharField(max_length=50)
     is_active = models.BooleanField(default=True)
-    for_chamber = models.BooleanField(default=True)
     membership = models.ForeignKey(Membership, models.CASCADE, null=True)
     months = models.PositiveSmallIntegerField(default=1)

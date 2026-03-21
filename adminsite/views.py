@@ -16,20 +16,19 @@ def get_thumbnailer_url(image_field):
         return image_field.url
     except Exception:
         return ''
-from adminsite.userinfo.models import EmailPasswordReset, EmailValidation, Professional, Profile, SocialAuth
+from adminsite.userinfo.models import EmailPasswordReset, EmailValidation, Profile, SocialAuth
 from rest_framework.generics import CreateAPIView
 from datetime import date, datetime, timedelta
 from django.http import Http404, JsonResponse
-from adminsite.tasks import email_notification_msg, email_notification_msg_norul, email_password_reset, email_validation, payment_notification
+from adminsite.tasks import email_notification_msg_norul, email_password_reset, email_validation
 import requests
-from work.models import Quote
-from payment.functions import get_rejected_reason, save_payment_info_mp, save_paypal_info
+import requests
 from adminsite.functions import get_paypal_token, validate_recaptcha
 import secrets
 import pytz
 from adminsite.serializers import ChangePasswordEmailSerializer
 from django.conf import settings
-from svc.models import SvcOpt
+
 
 # Google ID token validation (requiere: pip install google-auth)
 try:
@@ -62,7 +61,6 @@ class LoginAuthToken(ObtainAuthToken):
         resp = Response({'username': userId.username,
                          'first_name': userId.first_name,
                          'last_name': userId.last_name, 'id': userId.id,
-                         'is_chamber': pfl.is_chamber,
                          'is_artist': pfl.is_artist,
                          'uuid': str(pfl.uuid),
                          'picture': pic
@@ -131,7 +129,6 @@ class SocialLoginAuth(views.APIView):
             resp = Response(data={'username': user.user.username,
                          'first_name': user.user.first_name,
                          'last_name': user.user.last_name, 'id': user.user.id,
-                         'is_chamber': pfl.is_chamber,
                          'is_artist': pfl.is_artist,
                          'uuid': str(pfl.uuid),
                          'picture': pic})
@@ -187,7 +184,6 @@ class SocialLoginAuth(views.APIView):
                 resp = Response(data={'username': user.username,
                             'first_name': user.first_name,
                             'last_name': user.last_name, 'id': user.id,
-                            'is_chamber': pfl.is_chamber,
                             'is_artist': pfl.is_artist,
                             'uuid': str(pfl.uuid),
                             'picture': pic})
@@ -448,172 +444,3 @@ class ResendValidationEmail(views.APIView):
         return Response({"corrrecto": ["Correo enviado"]}, 
             status=status.HTTP_200_OK)
 
-# Culqi
-# class PaymentGate(views.APIView):
-#     permission_classes = [IsAuthenticated]
-#     http_method_names = ['post']
-
-#     def post(self, request):
-#         '''
-#         Culqi Pago Pasarela de pago
-#         '''
-#         token = 'sk_test_GRet2wPDm5nESmgH'
-#         url = 'https://api.culqi.com/v2/charges'
-
-#         card_token = request.data['cardToken']
-#         quote = request.data['quote'] # ID de la quote
-#         email = request.data['email'] # Email cliente
-
-#         try:
-#             quote=Quote.objects.get(
-#                 id=quote
-#             )
-#         except Quote.DoesNotExist:
-#             raise Http404
-#         cost = int(quote.sale*100) # Se convierte a centavos.
-
-#         headers = {'authorization': 'Bearer ' + token}
-#         r = requests.post(url, headers=headers, json={
-#             "amount": cost,
-#             "currency_code": "PEN",
-#             "email": email,
-#             "source_id": card_token,
-#             "description": "Servicio Qué Chamba",
-#             "antifraud_details": {
-#                 "first_name": quote.user.first_name,
-#                 "last_name": quote.user.last_name,
-#             }
-#         })
-
-#         json = r.json()
-#         print("Respuesta Culqi")
-#         print(json)
-#         print(json['object'])
-#         if json['object'] == 'error':
-#             message = json.get(
-#                 'user_message',
-#                 'Ha ocurrido un error con la pasarela de pago, verifique la información de la tarjeta e intente de nuevo.'
-#                 )
-#             return JsonResponse({
-#                 'status': 'error',
-#                 'user_message': message
-#             })
-#         if json['object'] == 'charge':
-#             print('Escenario pago exitoso')
-#             print(json)
-#             po = save_payment_info(quote.user, json, quote)
-#             return JsonResponse({
-#                 'status': 'charge',
-#                 'po': po,
-#                 'user_message': json['outcome']['user_message']
-#             })
-
-
-# Mercado pago
-class PaymentGate(views.APIView):
-    permission_classes = [IsAuthenticated]
-    http_method_names = ['post']
-
-    def post(self, request):
-        '''
-        Mercado Pago Pasarela de pago
-        '''
-        if settings.DEBUG:
-            token = 'TEST-7200367788974675-061523-68851c6fedbd42c97de2f7210f17114d-585091065' # TEST
-        else:
-            token = 'APP_USR-7200367788974675-061523-4b970bfedfdf87b1b2d3982fa97f1bec-585091065' # PROD
-
-        url = 'https://api.mercadopago.com/v1/payments?access_token=' + token
-
-        card_token = request.data['cardToken']
-        payment_id = request.data['paymentId'] # Visa, Amex, etc
-        email = request.data['email'] # Email cliente
-        quote = request.data['quote'] # ID de la quote
-
-        try:
-            quote=Quote.objects.get(
-                id=quote
-            )
-        except Quote.DoesNotExist:
-            raise Http404
-        cost = quote.sale # Se obtiene el costo en Backend por seguridad
-
-        r = requests.post(url, json={
-            "transaction_amount": cost,
-            "token": card_token,
-            "description": "Servicio Qué Chamba",
-            "installments": 1,
-            "payment_method_id": payment_id,
-            "payer": {
-            "email": email
-            }
-        })
-
-        json = r.json()
-        print("Respuesta Mercado Pago")
-        print(json)
-        if json['status']=='rejected': # Pago Rechazado
-            print("Pago rechazado")
-            content = get_rejected_reason(json['status_detail']) # msg de Rechazo
-
-            return Response(content, status=status.HTTP_400_BAD_REQUEST)
-
-        if json['status']=='approved': # Pago Aceptado
-            cw = save_payment_info_mp(quote.user, json, quote)
-
-            return JsonResponse({
-                'status': 'charge',
-                'cw': cw
-            })
-
-
-# Paypal pago
-class PaymentGatePaypal(views.APIView):
-    permission_classes = [IsAuthenticated]
-    http_method_names = ['post']
-
-    def post(self, request):
-        '''
-        Mercado Pago Pasarela de pago
-        '''
-        if settings.DEBUG:
-            client = 'AaROIHeyXcUoL6ydmcsjgmn74Uk3ucAnL7ECgcMsxZxsOb_Odlwi2wMM236sR9LbBR_93LJVUv1rM2Z7' # TEST
-            secret = 'ELG5tBk5Qc9MLGg9uhngxDt8Ge4dBIs_t1v2LUX9lpBRp9yY87J5ahM5TR7kANsvYuSw1iOS7HGqE8cq' # TEST
-            path = 'https://api-m.sandbox.paypal.com/'
-        else:
-            client = 'AdawtbH8ItpjtS0NU248DODrfRgiTUcr04sSJDulgj-4L5uYakDnvRt5QXHigxjTWcCUFDxbH-Z-RlKs' # PROD
-            secret = 'EMKHndw8FwjiOOWBUAzR8KDinUflJ6KKyt8qtEUkHCO6HaIylzYgJdP4ua9Pisa9Y9bRp7TnaQkkS7oV'
-            path = 'https://api-m.paypal.com/'
-
-        order = request.data.get('order', None)
-        quote = request.data.get('quote', None)
-        uuid = request.data.get('uuid', None)
-        opt = request.data.get('opt', None)
-        user = self.request.user
-
-        token = get_paypal_token(path, client, secret)
-
-        url = path + 'v2/checkout/orders/' + order['id']
-        headers = {
-            'Authorization': 'Bearer ' + token,
-            'Content-Type': 'application/json'
-        }
-
-        r = requests.get(url, headers=headers)
-
-        json = r.json()
-
-        if json['status']!='COMPLETED': # Pago Rechazado
-            print("Pago rechazado") # TODO MANEJAR PAGO RECHAZADO
-            content = get_rejected_reason(json['status_detail']) # msg de Rechazo
-
-            return Response(content, status=status.HTTP_400_BAD_REQUEST)
-
-        if json['status']=='COMPLETED': # Pago Aceptado
-
-            cw = save_paypal_info(order, user, uuid, opt, quote)
-
-            return JsonResponse({
-                'status': 'charge',
-                'cw': cw
-            })

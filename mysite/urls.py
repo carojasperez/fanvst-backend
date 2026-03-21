@@ -27,9 +27,6 @@ urlpatterns = [
     path('auth/', include('adminsite.auth_urls')),
     path('userinfo/', include('adminsite.userinfo.urls', namespace='userinfo')),
     path('baseinfo/', include('adminsite.baseinfo.urls', namespace='baseinfo')),
-    path('work/', include('work.urls', namespace='work')),
-    path('payment/', include('payment.urls', namespace='payment')),
-    path('svc/', include('svc.urls', namespace='svc')),
     path('legal/', include('legal.urls', namespace='legal')),
     path('blog/', include('blog.urls', namespace='blog')),
 

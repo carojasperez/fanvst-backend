@@ -2,10 +2,12 @@
 Serializer for Location and Locality Models
 '''
 from rest_framework import serializers
-from adminsite.userinfo.models import Academic, BankAccount, ChamberMembership, Genre, Notification, Professional, ProfessionalLike, Profile, Skill, UserDevice, WorkExperience
+from adminsite.userinfo.models import BankAccount, Genre, Notification, Profile, UserDevice
 from adminsite.baseinfo.serializers import BankSer, DistrictSer, MembershipSer, SubCategorySer
 from django.contrib.auth.models import User
 from django.utils import timezone
+
+
 def _img_url(image_field):
     try:
         return image_field.url
@@ -63,22 +65,10 @@ class UserProfilePictureSer(serializers.ModelSerializer):
         fields = ('picture',)
 
 
-class ProfessionalSer(serializers.ModelSerializer):
-    category_list = SubCategorySer(source='category', many=True)
-    user = PublicUserSer(read_only=True) # No es necesara info privada
-    since = serializers.DateTimeField(format="%Y/%m", read_only=True,
-                                      source='created_at')
-    class Meta:
-        model = Professional
-        fields = ('user', 'since', 'title', 'about', 'category',
-                  'category_list', 'tarif_from', 'tarif_to', 'uuid')
-
-
 class PublicUserProfileSer(serializers.ModelSerializer):
     user = PublicUserSer(many=False)
     gender_text = serializers.CharField(source='get_gender_display')
     countrytxt = serializers.CharField(source='country')
-    professional = ProfessionalSer(source='user.professional')
     thumbnail = serializers.SerializerMethodField(read_only=True)
     user_since = serializers.DateTimeField(format="%Y/%m", read_only=True,
                                            source='user.profile.created_at')
@@ -86,7 +76,7 @@ class PublicUserProfileSer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = ('user', 'gender', 'gender_text', 'countrytxt',
-                  'professional', 'thumbnail', 'user_since')
+                   'thumbnail', 'user_since')
 
     def get_thumbnail(self, pfl):
         return _img_url(pfl.picture)
@@ -103,13 +93,12 @@ class PubUserProfileSer(serializers.ModelSerializer):
     Modelo enfocado en SVC internacionales
     '''
     user = PublicUserSer(many=False)
-    professional = ProfessionalSer(source='user.professional')
     countrytxt = serializers.CharField(source='country')
     thumbnail = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Profile
-        fields = ('user', 'professional', 'thumbnail', 'countrytxt')
+        fields = ('user', 'thumbnail', 'countrytxt')
 
     def get_thumbnail(self, pfl):
         return _img_url(pfl.picture)
@@ -119,6 +108,7 @@ class PubUserProfileSer(serializers.ModelSerializer):
             return pfl.country.name
         except Exception:
             return ''
+
 
 class PrivateUserProfileSer(serializers.ModelSerializer):
     '''
@@ -139,44 +129,6 @@ class PrivateUserProfileSer(serializers.ModelSerializer):
         except Exception:
             return ''
 
-class AcademicSer(serializers.ModelSerializer):
-    start_text = serializers.DateField(format="%d/%m/%Y", read_only=True,
-                                      source='start')
-    end_text = serializers.DateField(format="%d/%m/%Y", read_only=True,
-                                      source='end')
-    class Meta:
-        model = Academic
-        read_only_fields = ('user', 'created_at', 'updated_at')
-        fields = ('user', 'id', 'start', 'end', 'title', 'institute',
-                  'start_text', 'end_text')
-
-
-class WorkExperienceSer(serializers.ModelSerializer):
-    start_text = serializers.DateField(format="%d/%m/%Y", read_only=True,
-                                       source='start')
-    end_text = serializers.DateField(format="%d/%m/%Y", read_only=True,
-                                     source='end')
-    class Meta:
-        model = WorkExperience
-        read_only_fields = ('user', 'created_at', 'updated_at')
-        fields = '__all__'
-
-
-class SkillSer(serializers.ModelSerializer):
-    level_text = serializers.CharField(source='get_level_display',
-                                       read_only=True)
-    class Meta:
-        model = Skill
-        read_only_fields = ('user', 'created_at', 'updated_at')
-        fields = '__all__'
-
-
-# class BankAccountSer(serializers.ModelSerializer):
-
-#     class Meta:
-#         model = BankAccount
-#         fields = ('user', 'bank', 'account_type', 'account_number')
-
 
 class UserDeviceSer(serializers.ModelSerializer):
     user = UserSer(many=False, read_only=True)
@@ -196,32 +148,11 @@ class BankAccountSer(serializers.ModelSerializer):
                   'cci_number', 'paypal')
 
 
-class ChamberMembershipSer(serializers.ModelSerializer):
-    membership = MembershipSer(read_only=True)
-    from_date = serializers.DateField(format='%d/%m/%Y')
-    to_date = serializers.DateField(format='%d/%m/%Y')
-
-    class Meta:
-        model = ChamberMembership
-        fields = ('user', 'membership', 'from_date', 'to_date', 'is_active')
-
-
-class ChamberLikeCountSer(serializers.ModelSerializer):
-    total = serializers.SerializerMethodField()
-
-    class Meta:
-        model = ProfessionalLike
-        fields = ('total',)
-
-    def get_total(self, obj):
-        return obj['total']
-
-
 class NotificationSer(serializers.ModelSerializer):
 
     class Meta:
         model = Notification
-        fields = ('user', 'work_offer')
+        fields = ('user',)
 
 
 class GenreSer(serializers.ModelSerializer):

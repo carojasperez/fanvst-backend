@@ -47,12 +47,6 @@ urlpatterns = [
     url(r'^authentication/user/resend-validation-email/f28ddddf-e54d-4dcd-befa-352652f0fad1/V1/',
         ResendValidationEmail.as_view()),
 
-    path('payment-gateway/mercado-pago/e97e8281-1d3e-4038-95ef-98f89e3071da',
-         views.PaymentGate.as_view()),
-
-    path('data/API/payment-gateway/paypal/e97e8281-1d3e-4038-95ef-98f89e3071da/',
-         views.PaymentGatePaypal.as_view()),
-
     # Fanvst public API
     path('data/API/', include('fanvst.urls')),
 

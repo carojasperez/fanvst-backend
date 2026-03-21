@@ -1,7 +1,4 @@
 from django.db import models
-
-# Create your models here.
-from django.db import models
 from django.contrib.auth.models import User, Group
 from adminsite.baseinfo.models import (Bank, Country, Department, District,
                                        Membership, MembershipPromoCode, Province,
@@ -98,7 +95,6 @@ class Profile(models.Model):
     phone2 = models.CharField(max_length=100, blank=True, null=True) # Tlf Fijo
     picture = models.ImageField(upload_to=user_image_path,
                                 null=True, blank=True)
-    is_chamber = models.BooleanField(default=False)
 
     # ── Campos Fanvst ─────────────────────────────────────────────
     is_artist = models.BooleanField(default=False)
@@ -188,92 +184,6 @@ class UserDevice(models.Model):
     device_info = models.CharField(max_length=255)
 
 
-class Professional(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    title = models.CharField(max_length=200)
-    about = models.CharField(max_length=1000)
-    category = models.ManyToManyField(SubCategory, blank=True)
-    tarif_from = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    tarif_to = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    uuid = models.UUIDField(default=uuid.uuid4) 
-
-    class Meta:
-        ordering = ['-id']
-
-
-class ProfessionalLike(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="user_like")
-    chamber = models.ForeignKey(User, on_delete=models.CASCADE, related_name="chamber_like")
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        ordering = ['-id']
-
-
-class Skill(models.Model):
-    created_at = models.DateTimeField(auto_now=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    title = models.CharField(max_length=200)
-    level = models.CharField(max_length=1, choices=SKILL_LEVEL)
-
-
-class Academic(models.Model):
-    '''
-    Modelo que almacena los certificados de un proveedor
-    Titulos, Cursos, Diplomados, reconocimientos.
-    '''
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    start = models.DateField()
-    end = models.DateField()
-    title = models.CharField(max_length=100)
-    institute = models.CharField(max_length=100)
-
-
-class WorkExperience(models.Model):
-    '''
-    Modelo que almacena los certificados de un proveedor
-    Titulos, Cursos, Diplomados, reconocimientos.
-    '''
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    start = models.DateField()
-    end = models.DateField(null=True, blank=True)
-    current = models.BooleanField(default=False) # Actual trabajo
-    title = models.CharField(max_length=150)  # Cargo
-    description = models.TextField(blank=True, null=True)
-    company = models.CharField(max_length=150)
-
-
-# class LegalDocument(models.Model):
-#     '''
-#     Modelo que almacena los certificados de un proveedor
-#     Licencias, antecedentes, buena conducta.
-#     Info confidencial solo disponible al aceptar una chamba.
-#     '''
-#     created_at = models.DateTimeField(auto_now_add=True)
-#     updated_at = models.DateTimeField(auto_now=True)
-#     user = models.OneToOneField(User, on_delete=models.CASCADE)
-#     expire_date = models.DateField()
-#     issue_date = models.DateField()
-
-
-# class PortFolioGallery(models.Model):
-#     '''
-#     Modelo que almacena imagenes que el proveedor puede usar
-#     como referencias.
-#     '''
-#     created_at = models.DateTimeField(auto_now_add=True)
-#     updated_at = models.DateTimeField(auto_now=True)
-#     user = models.OneToOneField(User, on_delete=models.CASCADE)
-
 class BankAccount(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -288,33 +198,9 @@ class BankAccount(models.Model):
     paypal = models.CharField(max_length=300, null=True, blank=True)
 
 
-class MembershipUserPromo(models.Model):
-    used_at = models.DateTimeField(auto_now_add=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    promo = models.ForeignKey(MembershipPromoCode, on_delete=models.CASCADE)
-
-    class Meta:
-        unique_together = ['user', 'promo']
-        ordering = ['-id']
-
-
-class ChamberMembership(models.Model):
-    '''
-    Lleva el control de la membresia del Chamber.
-    '''
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    membership = models.ForeignKey(Membership, on_delete=models.PROTECT)
-    from_date = models.DateField()
-    to_date = models.DateField()
-    is_active = models.BooleanField(default=True)
-
-
 class Notification(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE,
                                 related_name='notification')
-    work_offer = models.BooleanField(default=True)
 
 
 @receiver(post_save, sender=User)
