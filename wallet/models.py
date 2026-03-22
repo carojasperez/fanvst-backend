@@ -378,3 +378,42 @@ class PayoutRequest(models.Model):
         ArtistWallet.objects.filter(pk=self.artist.wallet.pk).update(
             balance_available=F('balance_available') + self.amount_requested,
         )
+
+
+class DlocalPayment(models.Model):
+    """
+    Rastrea la intención de pago y el estado de un pago externo vía dLocal Go.
+    Se vincula a la orden real (CampaignContribution, DirectTip, etc.) vía GenericForeignKey.
+    """
+    STATUS_PENDING = 'PENDING'
+    STATUS_PAID = 'PAID'
+    STATUS_REJECTED = 'REJECTED'
+    STATUS_CANCELLED = 'CANCELLED'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_PAID, 'Paid'),
+        (STATUS_REJECTED, 'Rejected'),
+        (STATUS_CANCELLED, 'Cancelled'),
+    ]
+
+    dlocal_payment_id = models.CharField(max_length=150, unique=True, null=True, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    
+    # Generic FK: referencia al objeto origen (DirectTip, CampaignContribution, etc.)
+    reference_ct = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    reference_id = models.PositiveIntegerField()
+    reference_object = GenericForeignKey('reference_ct', 'reference_id')
+
+    checkout_url = models.URLField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'dLocal Payment'
+        verbose_name_plural = 'dLocal Payments'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'dLocalPayment {self.dlocal_payment_id or "Pending"} - {self.status}'

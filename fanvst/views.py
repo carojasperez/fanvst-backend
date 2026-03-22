@@ -270,7 +270,7 @@ class CampaignContributeView(APIView):
             campaign=campaign,
             amount=ser.validated_data['amount'],
             message=ser.validated_data.get('message', ''),
-            confirmed=True,
+            confirmed=False,
         )
         return Response({
             'id': contribution.id,

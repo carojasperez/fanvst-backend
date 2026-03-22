@@ -8,11 +8,38 @@ Detectores de cambio de estado:
   - pre_save guarda el valor previo en el atributo _old_*
   - post_save compara el nuevo valor contra el guardado
 """
+import logging
+
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from adminsite.userinfo.models import Profile
 from wallet.models import PayoutRequest, WalletTransaction
+
+logger = logging.getLogger(__name__)
+
+
+def _dispatch_task(task, *args):
+    """
+    Encola la task en Celery.
+    Si no hay broker/worker en entorno local, hace fallback sin romper el request.
+    """
+    try:
+        task.delay(*args)
+    except Exception as exc:
+        logger.warning(
+            '[Notify] Celery no disponible para %s, ejecutando fallback local. Error: %s',
+            getattr(task, 'name', str(task)),
+            exc,
+        )
+        try:
+            task.apply(args=args, throw=False)
+        except Exception as local_exc:
+            logger.exception(
+                '[Notify] Fallback local también falló para %s: %s',
+                getattr(task, 'name', str(task)),
+                local_exc,
+            )
 
 
 # ── 1. Nuevo artista ──────────────────────────────────────────────────────────
@@ -42,7 +69,7 @@ def _on_artist_activated(sender, instance, created, **kwargs):
     old = getattr(instance, '_old_is_artist', False)
     if instance.is_artist and not old:
         from notifications.tasks import notify_new_artist
-        notify_new_artist.delay(instance.user_id)
+        _dispatch_task(notify_new_artist, instance.user_id)
 
 
 # ── 2. Wallet credit (pago recibido por artista) ──────────────────────────────
@@ -52,7 +79,7 @@ def _on_wallet_credit(sender, instance, created, **kwargs):
     """Notifica cuando se acredita un pago nuevo a la wallet de un artista."""
     if created and instance.type == WalletTransaction.TYPE_CREDIT:
         from notifications.tasks import notify_wallet_credit
-        notify_wallet_credit.delay(instance.pk)
+        _dispatch_task(notify_wallet_credit, instance.pk)
 
 
 # ── 3. Payout request lifecycle ───────────────────────────────────────────────
@@ -86,7 +113,7 @@ def _on_payout_change(sender, instance, created, **kwargs):
     )
 
     if created:
-        notify_payout_created.delay(instance.pk)
+        _dispatch_task(notify_payout_created, instance.pk)
         return
 
     old_status = getattr(instance, '_old_status', None)
@@ -104,4 +131,4 @@ def _on_payout_change(sender, instance, created, **kwargs):
 
     task = dispatch.get(new_status)
     if task:
-        task.delay(instance.pk)
+        _dispatch_task(task, instance.pk)
