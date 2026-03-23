@@ -28,6 +28,11 @@ import secrets
 import pytz
 from adminsite.serializers import ChangePasswordEmailSerializer
 from django.conf import settings
+from mysite.throttles import (
+    LoginRateThrottle, SocialLoginRateThrottle, RegisterRateThrottle,
+    PasswordResetRateThrottle, ResendValidationRateThrottle,
+    ValidateEmailRateThrottle, ValidateTokenRateThrottle,
+)
 
 
 # Google ID token validation (requiere: pip install google-auth)
@@ -43,6 +48,8 @@ class LoginAuthToken(ObtainAuthToken):
     '''
     Permite obtener un Token para el Login desde aplicaciones Moviles
     '''
+    throttle_classes = [LoginRateThrottle]
+
     def post(self, request, *args, **kwargs):
         response = super(
             LoginAuthToken, self).post(request, *args, **kwargs)
@@ -87,6 +94,7 @@ class LogoutView(views.APIView):
 
 class SocialLoginAuth(views.APIView):
     permission_classes = [permissions.AllowAny] # Or anon users can't register
+    throttle_classes = [SocialLoginRateThrottle]
     http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):
@@ -234,6 +242,7 @@ class UpdatePassword(views.APIView):
 class CreateUserView(CreateAPIView):
     model = User
     permission_classes = [permissions.AllowAny] # Or anon users can't register
+    throttle_classes = [RegisterRateThrottle]
     http_method_names = ['post']
     serializer_class = UserRegSer
 
@@ -257,6 +266,7 @@ class CheckUserExists(views.APIView):
 
 class ValidateEmail(views.APIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    throttle_classes = [ValidateEmailRateThrottle]
     http_method_names = ['get']
 
     def get(self, request, *args, **kwargs):
@@ -290,6 +300,7 @@ class PassWordResetEmail(views.APIView):
     '''
     http_method_names = ['post']
     permission_classes = [permissions.AllowAny] # Or anon users can't use
+    throttle_classes = [PasswordResetRateThrottle]
 
     def post(self, request, *args, **kwargs):
         eaddress = request.data.get('eaddress', None) 
@@ -336,6 +347,7 @@ class ValidateEmailToken(views.APIView):
     Ademas de que comprueba a que usuario le pertenece
     '''
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    throttle_classes = [ValidateTokenRateThrottle]
     http_method_names = ['get']
 
     def get(self, request, *args, **kwargs):
@@ -422,6 +434,7 @@ class ChangePasswordFromEmail(views.APIView):
 class ResendValidationEmail(views.APIView):
     http_method_names = ['post']
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ResendValidationRateThrottle]
 
     def post(self, request, *args, **kwargs):
         eaddress = request.data.get('eaddress', None)

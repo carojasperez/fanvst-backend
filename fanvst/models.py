@@ -92,7 +92,16 @@ class ArtistProfile(models.Model):
 
     @property
     def followers_count(self):
+        # Si Django ORM asignó el valor anotado, lo usamos directamente
+        # (evita una query extra por instancia)
+        if hasattr(self, '_followers_count'):
+            return self._followers_count
         return self.followers.count()
+
+    @followers_count.setter
+    def followers_count(self, value):
+        # Permite que Django asigne el valor del annotate() sin error
+        self._followers_count = value
 
     @property
     def active_campaigns_count(self):

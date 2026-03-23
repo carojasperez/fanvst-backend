@@ -1,5 +1,6 @@
 import uuid as uuid_module
 import requests
+from django.db.models import Count
 from rest_framework import generics, filters, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,6 +21,7 @@ from .serializers import (
     SubscriberSerializer, TipSerializer, DirectTipSerializer, FanProfileSerializer,
 )
 from .pagination import ArtistPagination
+from mysite.throttles import FinancialRateThrottle, SubscribeRateThrottle
 
 
 def _get_artist(handle_or_uuid, qs=None):
@@ -60,11 +62,16 @@ class ArtistListView(generics.ListAPIView):
     serializer_class = ArtistListSerializer
     permission_classes = [AllowAny]
     pagination_class = ArtistPagination
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['stage_name', 'bio', 'user__first_name', 'user__last_name']
+    ordering_fields = ['stage_name', 'followers_count', 'id']
+    ordering = ['-id']  # más recientes primero por defecto
 
     def get_queryset(self):
-        qs = ArtistProfile.objects.select_related('user').prefetch_related('genres', 'followers')
+        qs = (ArtistProfile.objects
+              .select_related('user')
+              .prefetch_related('genres', 'followers')
+              .annotate(followers_count=Count('followers')))
         genre_slug = self.request.query_params.get('genre')
         if genre_slug:
             qs = qs.filter(genres__slug=genre_slug)
@@ -101,6 +108,7 @@ class ArtistFollowView(APIView):
 class ArtistTipView(APIView):
     """Fan envía una propina directa al artista (sin campaña)."""
     permission_classes = [IsAuthenticated]
+    throttle_classes = [FinancialRateThrottle]
 
     def post(self, request, handle_or_uuid):
         artist = _get_artist(handle_or_uuid)
@@ -134,6 +142,7 @@ class ArtistTipView(APIView):
 class TipPaypalConfirmView(APIView):
     """Confirma una propina directa después de que PayPal aprobó el pago."""
     permission_classes = [IsAuthenticated]
+    throttle_classes = [FinancialRateThrottle]
 
     def post(self, request, handle_or_uuid):
         artist = _get_artist(handle_or_uuid)
@@ -256,6 +265,7 @@ class CampaignDetailView(APIView):
 class CampaignContributeView(APIView):
     """Fan contribuye a una campaña."""
     permission_classes = [IsAuthenticated]
+    throttle_classes = [FinancialRateThrottle]
 
     def post(self, request, slug_or_uuid):
         campaign = _get_campaign(slug_or_uuid)
@@ -284,6 +294,7 @@ class CampaignContributeView(APIView):
 class CampaignContributePaypalView(APIView):
     """Fan confirma su contribución a una campaña tras el pago con PayPal."""
     permission_classes = [IsAuthenticated]
+    throttle_classes = [FinancialRateThrottle]
 
     def post(self, request, slug_or_uuid):
         campaign = _get_campaign(slug_or_uuid)
@@ -389,6 +400,7 @@ class ArtistCampaignDetailView(APIView):
 
 class TierSubscribeView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [SubscribeRateThrottle]
 
     def post(self, request, tier_id):
         tier = get_object_or_404(FanTier, id=tier_id, is_active=True)

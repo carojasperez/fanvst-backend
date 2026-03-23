@@ -155,6 +155,31 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+# ── Cache ─────────────────────────────────────────────────────────────────────
+# Si REDIS_URL está definido en .env → Redis (producción / staging).
+# Si no está definido          → LocMemCache (desarrollo local, sin dependencias).
+# Los throttles de DRF usan este cache; con LocMemCache funcionan igualmente
+# pero los contadores se resetean al reiniciar el proceso.
+REDIS_URL = config('REDIS_URL', default='')
+
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+            'KEY_PREFIX': 'fanvst',
+            'TIMEOUT': 300,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'fanvst-throttle',
+        }
+    }
+
+
 # ── Django REST Framework ─────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -174,6 +199,27 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ),
     'DATE_INPUT_FORMATS': ["%d/%m/%Y", "%Y-%m-%d"],
+    # ── Rate limiting ──────────────────────────────────────────────────────────
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        # Globales (fallback para endpoints sin throttle específico)
+        'anon': '200/day',
+        'user': '2000/day',
+        # Autenticación — anónimos
+        'login':             '5/min',
+        'social_login':      '10/min',
+        'register':          '5/hour',
+        'password_reset':    '3/hour',
+        'resend_validation': '3/hour',
+        'validate_email':    '20/hour',
+        'validate_token':    '10/hour',
+        # Financieros — usuarios autenticados
+        'financial':  '20/hour',
+        'subscribe':  '30/hour',
+    },
 }
 
 
