@@ -156,6 +156,10 @@ class ArtistListSerializer(serializers.ModelSerializer):
         return obj.cover_picture_url
 
     def get_is_following(self, obj):
+        # Usar el valor anotado si está disponible (0 queries extra)
+        annotated = getattr(obj, 'is_following_annotated', None)
+        if annotated is not None:
+            return bool(annotated)
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return obj.followers.filter(fan=request.user).exists()

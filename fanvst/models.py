@@ -105,7 +105,13 @@ class ArtistProfile(models.Model):
 
     @property
     def active_campaigns_count(self):
+        if hasattr(self, '_active_campaigns_count'):
+            return self._active_campaigns_count
         return self.campaigns.filter(status='active').count()
+
+    @active_campaigns_count.setter
+    def active_campaigns_count(self, value):
+        self._active_campaigns_count = value
 
 
 class ArtistFollow(models.Model):
@@ -178,7 +184,7 @@ class Campaign(models.Model):
     goal_amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD')
     deadline = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=CAMPAIGN_STATUS_CHOICES, default='draft')
+    status = models.CharField(max_length=20, choices=CAMPAIGN_STATUS_CHOICES, default='draft', db_index=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -194,10 +200,16 @@ class Campaign(models.Model):
 
     @property
     def raised_amount(self):
+        if hasattr(self, '_raised_amount_cache'):
+            return self._raised_amount_cache
         total = self.contributions.filter(confirmed=True).aggregate(
             total=Sum('amount')
         )['total']
         return total or Decimal('0')
+
+    @raised_amount.setter
+    def raised_amount(self, value):
+        self._raised_amount_cache = Decimal(str(value)) if value is not None else Decimal('0')
 
     @property
     def cover_image_url(self):
@@ -214,7 +226,13 @@ class Campaign(models.Model):
 
     @property
     def contributors_count(self):
+        if hasattr(self, '_contributors_count_cache'):
+            return self._contributors_count_cache
         return self.contributions.filter(confirmed=True).values('fan').distinct().count()
+
+    @contributors_count.setter
+    def contributors_count(self, value):
+        self._contributors_count_cache = value
 
 
 class CampaignContribution(models.Model):
@@ -224,6 +242,7 @@ class CampaignContribution(models.Model):
     amount = models.DecimalField(max_digits=8, decimal_places=2)
     confirmed = models.BooleanField(default=False)
     message = models.TextField(blank=True)
+    paypal_order_id = models.CharField(max_length=100, blank=True, default='', db_index=True)
 
     def __str__(self):
         return f'{self.fan} → {self.campaign} (${self.amount})'

@@ -1,6 +1,10 @@
 import uuid as uuid_module
 import requests
-from django.db.models import Count
+from decimal import Decimal
+from django.db import transaction
+from django.db.models import Count, Q, Exists, OuterRef, Sum
+from django.db.models.functions import Coalesce
+from django.db.models import Prefetch
 from rest_framework import generics, filters, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -70,8 +74,26 @@ class ArtistListView(generics.ListAPIView):
     def get_queryset(self):
         qs = (ArtistProfile.objects
               .select_related('user')
-              .prefetch_related('genres', 'followers')
-              .annotate(followers_count=Count('followers')))
+              .prefetch_related('genres')
+              .annotate(
+                  # distinct=True evita duplicados cuando se filtra por genres (M2M)
+                  followers_count=Count('followers', distinct=True),
+                  active_campaigns_count=Count(
+                      'campaigns',
+                      filter=Q(campaigns__status='active'),
+                      distinct=True,
+                  ),
+              ))
+
+        # Anotar is_following si hay usuario autenticado (0 queries extra vs N queries)
+        user = self.request.user
+        if user.is_authenticated:
+            qs = qs.annotate(
+                is_following_annotated=Exists(
+                    ArtistFollow.objects.filter(artist=OuterRef('pk'), fan=user)
+                )
+            )
+
         genre_slug = self.request.query_params.get('genre')
         if genre_slug:
             qs = qs.filter(genres__slug=genre_slug)
@@ -82,7 +104,32 @@ class ArtistDetailView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, handle_or_uuid):
-        artist = _get_artist(handle_or_uuid)
+        # Prefetch campaigns con sus métricas ya anotadas — evita N queries por campaña
+        campaigns_qs = Campaign.objects.annotate(
+            raised_amount=Coalesce(
+                Sum('contributions__amount', filter=Q(contributions__confirmed=True)),
+                Decimal('0'),
+            ),
+            contributors_count=Count(
+                'contributions__fan',
+                filter=Q(contributions__confirmed=True),
+                distinct=True,
+            ),
+        ).prefetch_related('rewards', 'updates')
+
+        qs = ArtistProfile.objects.select_related('user').prefetch_related(
+            'genres', 'fan_tiers',
+            Prefetch('campaigns', queryset=campaigns_qs),
+        )
+
+        if request.user.is_authenticated:
+            qs = qs.annotate(
+                is_following_annotated=Exists(
+                    ArtistFollow.objects.filter(artist=OuterRef('pk'), fan=request.user)
+                )
+            )
+
+        artist = _get_artist(handle_or_uuid, qs=qs)
         return Response(ArtistDetailSerializer(artist, context={'request': request}).data)
 
 
@@ -156,6 +203,13 @@ class TipPaypalConfirmView(APIView):
         if not order or not order.get('id'):
             return Response({'detail': 'Datos de pago inválidos.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        order_id = order['id']
+
+        # Idempotencia: si este order PayPal ya fue procesado, retornar el registro existente
+        existing = DirectTip.objects.filter(paypal_order_id=order_id).first()
+        if existing:
+            return Response({'id': existing.id, 'amount': str(existing.amount), 'currency': existing.currency})
+
         # Credenciales PayPal según entorno
         if settings.DEBUG:
             paypal_client = 'AaROIHeyXcUoL6ydmcsjgmn74Uk3ucAnL7ECgcMsxZxsOb_Odlwi2wMM236sR9LbBR_93LJVUv1rM2Z7'
@@ -166,10 +220,10 @@ class TipPaypalConfirmView(APIView):
             paypal_secret = 'EMKHndw8FwjiOOWBUAzR8KDinUflJ6KKyt8qtEUkHCO6HaIylzYgJdP4ua9Pisa9Y9bRp7TnaQkkS7oV'
             paypal_url    = 'https://api-m.paypal.com/'
 
-        # Verificar orden con PayPal
+        # Verificar orden con PayPal (fuera de la transacción para no mantener el lock)
         token = get_paypal_token(paypal_url, paypal_client, paypal_secret)
         r = requests.get(
-            paypal_url + 'v2/checkout/orders/' + order['id'],
+            paypal_url + 'v2/checkout/orders/' + order_id,
             headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
             timeout=15,
         )
@@ -184,16 +238,22 @@ class TipPaypalConfirmView(APIView):
         except (KeyError, IndexError):
             amount = paypal_data['purchase_units'][0]['amount']['value']
 
-        tip = DirectTip.objects.create(
-            fan=request.user,
-            artist=artist,
-            amount=amount,
-            currency=currency,
-            message=message,
-            confirmed=True,
-            paypal_order_id=order['id'],
-        )
-        return Response({'id': tip.id, 'amount': str(tip.amount), 'currency': tip.currency}, status=status.HTTP_201_CREATED)
+        # Transacción atómica + segundo chequeo para evitar race condition
+        with transaction.atomic():
+            tip, created = DirectTip.objects.get_or_create(
+                paypal_order_id=order_id,
+                defaults={
+                    'fan': request.user,
+                    'artist': artist,
+                    'amount': amount,
+                    'currency': currency,
+                    'message': message,
+                    'confirmed': True,
+                },
+            )
+
+        http_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response({'id': tip.id, 'amount': str(tip.amount), 'currency': tip.currency}, status=http_status)
 
 
 class MeTipsView(APIView):
@@ -244,9 +304,20 @@ class CampaignListView(generics.ListAPIView):
     search_fields = ['title', 'description', 'artist__stage_name']
 
     def get_queryset(self):
+        # Anotar métricas financieras en SQL — evita N queries por campaña
         qs = Campaign.objects.select_related('artist__user').prefetch_related(
-            'contributions', 'artist__genres'
-        ).filter(status='active')
+            'artist__genres', 'rewards',
+        ).filter(status='active').annotate(
+            raised_amount=Coalesce(
+                Sum('contributions__amount', filter=Q(contributions__confirmed=True)),
+                Decimal('0'),
+            ),
+            contributors_count=Count(
+                'contributions__fan',
+                filter=Q(contributions__confirmed=True),
+                distinct=True,
+            ),
+        )
         genre_slug = self.request.query_params.get('genre')
         if genre_slug:
             qs = qs.filter(artist__genres__slug=genre_slug)
@@ -307,6 +378,19 @@ class CampaignContributePaypalView(APIView):
         if not order or not order.get('id'):
             return Response({'detail': 'Datos de pago inválidos.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        order_id = order['id']
+
+        # Idempotencia: si este order PayPal ya fue procesado, retornar el registro existente
+        existing = CampaignContribution.objects.filter(paypal_order_id=order_id).first()
+        if existing:
+            return Response({
+                'id': existing.id,
+                'amount': str(existing.amount),
+                'raised_amount': str(campaign.raised_amount),
+                'percent_reached': campaign.percent_reached,
+                'contributors_count': campaign.contributors_count,
+            })
+
         # Credenciales PayPal según entorno
         if settings.DEBUG:
             paypal_client = 'AaROIHeyXcUoL6ydmcsjgmn74Uk3ucAnL7ECgcMsxZxsOb_Odlwi2wMM236sR9LbBR_93LJVUv1rM2Z7'
@@ -317,9 +401,10 @@ class CampaignContributePaypalView(APIView):
             paypal_secret = 'EMKHndw8FwjiOOWBUAzR8KDinUflJ6KKyt8qtEUkHCO6HaIylzYgJdP4ua9Pisa9Y9bRp7TnaQkkS7oV'
             paypal_url    = 'https://api-m.paypal.com/'
 
+        # Verificar orden con PayPal (fuera de la transacción para no mantener el lock)
         token = get_paypal_token(paypal_url, paypal_client, paypal_secret)
         r = requests.get(
-            paypal_url + 'v2/checkout/orders/' + order['id'],
+            paypal_url + 'v2/checkout/orders/' + order_id,
             headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
             timeout=15,
         )
@@ -333,20 +418,27 @@ class CampaignContributePaypalView(APIView):
         except (KeyError, IndexError):
             amount = paypal_data['purchase_units'][0]['amount']['value']
 
-        contribution = CampaignContribution.objects.create(
-            fan=request.user,
-            campaign=campaign,
-            amount=amount,
-            message=message,
-            confirmed=True,
-        )
+        # Transacción atómica + get_or_create para evitar race condition
+        with transaction.atomic():
+            contribution, created = CampaignContribution.objects.get_or_create(
+                paypal_order_id=order_id,
+                defaults={
+                    'fan': request.user,
+                    'campaign': campaign,
+                    'amount': amount,
+                    'message': message,
+                    'confirmed': True,
+                },
+            )
+
+        http_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response({
             'id': contribution.id,
             'amount': str(contribution.amount),
             'raised_amount': str(campaign.raised_amount),
             'percent_reached': campaign.percent_reached,
             'contributors_count': campaign.contributors_count,
-        }, status=status.HTTP_201_CREATED)
+        }, status=http_status)
 
 
 class ArtistCampaignView(APIView):
@@ -424,10 +516,24 @@ class MeFollowingView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        followed_ids = self.request.user.fanvst_following.values_list('artist_id', flat=True)
-        return ArtistProfile.objects.filter(id__in=followed_ids).select_related('user').prefetch_related(
-            'genres', 'followers'
-        )
+        user = self.request.user
+        followed_ids = user.fanvst_following.values_list('artist_id', flat=True)
+        return (ArtistProfile.objects
+                .filter(id__in=followed_ids)
+                .select_related('user')
+                .prefetch_related('genres')
+                .annotate(
+                    followers_count=Count('followers', distinct=True),
+                    active_campaigns_count=Count(
+                        'campaigns',
+                        filter=Q(campaigns__status='active'),
+                        distinct=True,
+                    ),
+                    # El usuario siempre sigue a estos artistas — evitamos la query
+                    is_following_annotated=Exists(
+                        ArtistFollow.objects.filter(artist=OuterRef('pk'), fan=user)
+                    ),
+                ))
 
 
 class MeSubscriptionsView(generics.ListAPIView):
